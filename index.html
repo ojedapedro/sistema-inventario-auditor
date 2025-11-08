@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Control de Inventario</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-boxes me-2"></i>
+                Sistema de Control de Inventario
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#inicio">Inicio</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#inventario">Inventario</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#historial">Historial</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Logo y Encabezado -->
+        <div class="logo-container">
+            <img src="assets/images/logo.png" alt="Logo de la Tienda" class="logo-img">
+            <div>
+                <h1 class="mb-1">Control de Inventario</h1>
+                <p class="text-muted">Sistema profesional para auditoría de inventarios</p>
+            </div>
+        </div>
+
+        <!-- Información de la Sesión Actual -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card stat-card products">
+                    <div class="number" id="total-products">0</div>
+                    <div>Productos en Inventario</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card scanned">
+                    <div class="number" id="scanned-products">0</div>
+                    <div>Productos Escaneados</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card discrepancies">
+                    <div class="number" id="discrepancies-count">0</div>
+                    <div>Discrepancias</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progreso del Inventario -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fas fa-tasks me-2"></i>Progreso del Inventario
+            </div>
+            <div class="card-body">
+                <div class="progress">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: 0%" id="progress-bar"></div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span id="progress-text">0% completado</span>
+                    <span id="progress-detail">0 de 0 productos</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Panel Principal -->
+            <div class="col-lg-8">
+                <!-- Carga de Inventario Teórico -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fas fa-file-excel me-2"></i>Cargar Inventario Teórico
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Suba el archivo Excel con el inventario teórico para comenzar la auditoría.</p>
+                        
+                        <div class="file-upload-area" id="file-upload-area">
+                            <i class="fas fa-file-excel"></i>
+                            <h5>Arrastre su archivo Excel aquí o haga clic para seleccionar</h5>
+                            <p class="text-muted">Formatos soportados: .xlsx, .xls</p>
+                            <input type="file" id="excel-file" accept=".xlsx, .xls" style="display: none;">
+                        </div>
+                        
+                        <div id="file-info" class="mb-3" style="display: none;">
+                            <div class="alert alert-info d-flex justify-content-between align-items-center">
+                                <span id="file-name"></span>
+                                <button type="button" class="btn-close" id="remove-file"></button>
+                            </div>
+                        </div>
+                        
+                        <button class="btn btn-primary" id="load-excel" disabled>
+                            <i class="fas fa-upload me-2"></i>Cargar Inventario
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Información del Inventario -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fas fa-info-circle me-2"></i>Información del Inventario
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="inventory-date" class="form-label">Fecha del Inventario</label>
+                                <input type="date" class="form-control" id="inventory-date" value="">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="store" class="form-label">Tienda</label>
+                                <input type="text" class="form-control" id="store" placeholder="Nombre de la tienda">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="responsible" class="form-label">Responsable</label>
+                                <input type="text" class="form-control" id="responsible" placeholder="Nombre del responsable">
+                            </div>
+                        </div>
+                        <button class="btn btn-success" id="save-info">
+                            <i class="fas fa-save me-2"></i>Guardar Información
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Escaneo de Códigos de Barras -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-barcode me-2"></i>Escaneo de Inventario Físico
+                    </div>
+                    <div class="card-body">
+                        <div class="scan-section">
+                            <p class="text-muted mb-3">Escanea el código de barras de cada producto. El sistema registrará automáticamente cada escaneo.</p>
+                            <input type="text" class="scan-input" id="barcode-input" placeholder="Coloque el cursor aquí y escanee el código de barras" autofocus>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                El campo se limpiará automáticamente después de cada escaneo para el siguiente producto.
+                            </div>
+                        </div>
+                        
+                        <h5 class="section-title">Productos Escaneados Recientemente</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Producto</th>
+                                        <th>Cantidad Teórica</th>
+                                        <th>Escaneos</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-scans">
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4">No se han escaneado productos aún</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Lateral -->
+            <div class="col-lg-4">
+                <!-- Generar Informe -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fas fa-file-pdf me-2"></i>Generar Informe de Incidencias
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Genere un informe PDF con las discrepancias entre el inventario teórico y físico.</p>
+                        <button class="btn btn-warning w-100" id="generate-report" disabled>
+                            <i class="fas fa-download me-2"></i>Generar y Descargar PDF
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Inventario Actual -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fas fa-clipboard-list me-2"></i>Inventario Actual
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Producto</th>
+                                        <th>Cant.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="current-inventory">
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">No hay inventario cargado</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Historial de Inventarios -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-history me-2"></i>Historial de Inventarios
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Últimos 5 inventarios realizados:</p>
+                        <div id="inventory-history">
+                            <p class="text-muted text-center py-3">No hay historial disponible</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Sistema de Control de Inventario</h5>
+                    <p>Herramienta profesional para auditoría de inventarios</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <p>&copy; 2023 Todos los derechos reservados</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <script src="js/excel-loader.js"></script>
+    <script src="js/barcode-scanner.js"></script>
+    <script src="js/pdf-generator.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
