@@ -32,8 +32,13 @@ const ExcelLoader = {
             this.fileUploadArea.style.backgroundColor = '';
             
             if (e.dataTransfer.files.length) {
-                this.excelFileInput.files = e.dataTransfer.files;
-                this.handleFileSelection();
+                const file = e.dataTransfer.files[0];
+                if (this.isValidExcelFile(file)) {
+                    this.excelFileInput.files = e.dataTransfer.files;
+                    this.handleFileSelection();
+                } else {
+                    alert('Por favor, seleccione un archivo Excel válido (.xlsx, .xls)');
+                }
             }
         });
         
@@ -42,9 +47,27 @@ const ExcelLoader = {
         this.loadExcelButton.addEventListener('click', () => this.loadExcelData());
     },
     
+    isValidExcelFile: function(file) {
+        const allowedTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel'
+        ];
+        const allowedExtensions = ['.xlsx', '.xls'];
+        const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+        
+        return allowedTypes.includes(file.type) || allowedExtensions.includes(fileExtension);
+    },
+    
     handleFileSelection: function() {
         if (this.excelFileInput.files.length > 0) {
             const file = this.excelFileInput.files[0];
+            
+            if (!this.isValidExcelFile(file)) {
+                alert('Por favor, seleccione un archivo Excel válido (.xlsx, .xls)');
+                this.removeSelectedFile();
+                return;
+            }
+            
             this.fileName.textContent = file.name;
             this.fileInfo.style.display = 'block';
             this.loadExcelButton.disabled = false;
@@ -64,56 +87,93 @@ const ExcelLoader = {
             return;
         }
         
+        this.showLoadingState();
+        
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 
-                // Obtener la primera hoja
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
-                
-                // Convertir a JSON
                 const jsonData = XLSX.utils.sheet_to_json(worksheet);
                 
-                // Procesar los datos
-                AppState.theoreticalInventory = jsonData.map(row => {
-                    // Buscar las columnas por nombres comunes
-                    const code = row['Código'] || row['codigo'] || row['CODIGO'] || row['Código de Barras'] || row['SKU'] || '';
-                    const name = row['Producto'] || row['producto'] || row['PRODUCTO'] || row['Descripción'] || row['Nombre'] || '';
-                    const quantity = row['Cantidad'] || row['cantidad'] || row['CANTIDAD'] || row['Stock'] || row['Existencia'] || 0;
-                    
-                    return {
-                        code: code.toString(),
-                        name: name.toString(),
-                        quantity: parseInt(quantity) || 0
-                    };
-                }).filter(item => item.code && item.name); // Filtrar elementos vacíos
+                this.processInventoryData(jsonData);
                 
-                // Reiniciar inventario físico
-                AppState.physicalInventory = {};
-                
-                // Actualizar interfaz
-                BarcodeScanner.updateRecentScans();
-                Statistics.update();
-                this.updateCurrentInventoryTable();
-                
-                // Habilitar el botón de generar informe
-                document.getElementById('generate-report').disabled = AppState.theoreticalInventory.length === 0;
-                
-                alert(`Inventario teórico cargado correctamente con ${AppState.theoreticalInventory.length} productos.`);
             } catch (error) {
                 console.error('Error al procesar el archivo Excel:', error);
                 alert('Error al procesar el archivo Excel. Verifique que el formato sea correcto.');
+                this.hideLoadingState();
             }
         };
         
-        reader.onerror = function() {
+        reader.onerror = () => {
             alert('Error al leer el archivo.');
+            this.hideLoadingState();
         };
         
         reader.readAsArrayBuffer(file);
+    },
+    
+    processInventoryData: function(jsonData) {
+        AppState.theoreticalInventory = jsonData.map((row, index) => {
+            const code = row['Código'] || row['codigo'] || row['CODIGO'] || 
+                         row['Código de Barras'] || row['SKU'] || row['EAN'] || 
+                         (index + 1).toString();
+            
+            const name = row['Producto'] || row['producto'] || row['PRODUCTO'] || 
+                        row['Descripción'] || row['Nombre'] || row['Item'] || 
+                        `Producto ${index + 1}`;
+            
+            const quantity = parseInt(row['Cantidad'] || row['cantidad'] || 
+                            row['CANTIDAD'] || row['Stock'] || row['Existencia'] || 0);
+            
+            return {
+                code: code.toString().trim(),
+                name: name.toString().trim(),
+                quantity: isNaN(quantity) ? 0 : quantity
+            };
+        }).filter(item => item.code && item.name);
+        
+        AppState.physicalInventory = {};
+        
+        BarcodeScanner.updateRecentScans();
+        Statistics.update();
+        this.updateCurrentInventoryTable();
+        
+        document.getElementById('generate-report').disabled = AppState.theoreticalInventory.length === 0;
+        
+        this.hideLoadingState();
+        
+        const successMessage = `Inventario teórico cargado correctamente con ${AppState.theoreticalInventory.length} productos.`;
+        this.showSuccessMessage(successMessage);
+    },
+    
+    showLoadingState: function() {
+        this.loadExcelButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Cargando...';
+        this.loadExcelButton.disabled = true;
+        this.fileUploadArea.classList.add('loading');
+    },
+    
+    hideLoadingState: function() {
+        this.loadExcelButton.innerHTML = '<i class="fas fa-upload me-2"></i>Cargar Inventario';
+        this.loadExcelButton.disabled = false;
+        this.fileUploadArea.classList.remove('loading');
+    },
+    
+    showSuccessMessage: function(message) {
+        const originalText = this.loadExcelButton.innerHTML;
+        
+        this.loadExcelButton.innerHTML = '<i class="fas fa-check me-2"></i>¡Cargado!';
+        this.loadExcelButton.classList.remove('btn-primary');
+        this.loadExcelButton.classList.add('btn-success');
+        
+        setTimeout(() => {
+            this.loadExcelButton.innerHTML = originalText;
+            this.loadExcelButton.classList.remove('btn-success');
+            this.loadExcelButton.classList.add('btn-primary');
+        }, 2000);
     },
     
     updateCurrentInventoryTable: function() {
@@ -129,25 +189,23 @@ const ExcelLoader = {
             return;
         }
         
-        // Mostrar los primeros 10 productos
         const productsToShow = AppState.theoreticalInventory.slice(0, 10);
         
         productsToShow.forEach(product => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${product.code}</td>
+                <td><code>${product.code}</code></td>
                 <td>${product.name}</td>
-                <td>${product.quantity}</td>
+                <td><span class="badge bg-secondary">${product.quantity}</span></td>
             `;
             currentInventoryTable.appendChild(row);
         });
         
-        // Si hay más de 10 productos, mostrar un mensaje
         if (AppState.theoreticalInventory.length > 10) {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td colspan="3" class="text-center text-muted">
-                    ... y ${AppState.theoreticalInventory.length - 10} productos más
+                    <small>... y ${AppState.theoreticalInventory.length - 10} productos más</small>
                 </td>
             `;
             currentInventoryTable.appendChild(row);

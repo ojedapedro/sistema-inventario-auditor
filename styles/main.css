@@ -31,6 +31,7 @@ body {
 .logo-img {
     height: 80px;
     margin-right: 20px;
+    border-radius: 5px;
 }
 
 .card {
@@ -202,4 +203,89 @@ body {
 .table-container {
     max-height: 400px;
     overflow-y: auto;
+}
+
+/* Estilos para el modal de login */
+.login-modal .modal-content {
+    border-radius: 15px;
+    border: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.login-modal .modal-header {
+    border-radius: 15px 15px 0 0;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+}
+
+.login-modal .form-control {
+    border-radius: 8px;
+    padding: 12px 15px;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s;
+}
+
+.login-modal .form-control:focus {
+    border-color: var(--secondary);
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+/* Estilos para el textarea de observaciones */
+#observations {
+    resize: vertical;
+    min-height: 100px;
+}
+
+/* Indicador de usuario autenticado */
+.user-indicator {
+    background: var(--success);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}
+
+/* Campos obligatorios */
+.form-label.required::after {
+    content: " *";
+    color: var(--accent);
+}
+
+/* Mejoras responsive */
+@media (max-width: 768px) {
+    .logo-container {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .logo-img {
+        margin-right: 0;
+        margin-bottom: 15px;
+    }
+    
+    .navbar-nav {
+        text-align: center;
+    }
+}
+
+/* Estados de carga */
+.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Alertas personalizadas */
+.alert {
+    border: none;
+    border-radius: 8px;
+}
+
+/* Mejoras en los botones */
+.btn {
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }

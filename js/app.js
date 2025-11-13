@@ -1,6 +1,5 @@
-// Módulo principal de la aplicación - Coordina todos los componentes
+// Módulo principal de la aplicación
 
-// Estado global de la aplicación
 const AppState = {
     theoreticalInventory: [],
     physicalInventory: {},
@@ -8,51 +7,113 @@ const AppState = {
     currentInventoryInfo: {
         date: '',
         store: '',
-        responsible: ''
+        responsible: '',
+        observations: '',
+        auditor: ''
     }
 };
 
-// Inicialización de la aplicación
 document.addEventListener('DOMContentLoaded', function() {
-    // Establecer fecha actual por defecto
+    Auth.init();
+    
+    Auth.onAuthStateChange(function(user) {
+        if (user) {
+            initializeApp();
+        } else {
+            resetApp();
+        }
+    });
+});
+
+function initializeApp() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('inventory-date').value = today;
     
-    // Cargar historial desde localStorage si existe
     const savedHistory = localStorage.getItem('inventoryHistory');
     if (savedHistory) {
-        AppState.inventoryHistory = JSON.parse(savedHistory);
-        InventoryHistory.render();
+        try {
+            AppState.inventoryHistory = JSON.parse(savedHistory);
+            InventoryHistory.render();
+        } catch (e) {
+            console.error('Error loading history:', e);
+            AppState.inventoryHistory = [];
+        }
     }
     
-    // Inicializar módulos
     ExcelLoader.init();
     BarcodeScanner.init();
     PDFGenerator.init();
     InventoryInfo.init();
     
-    // Actualizar estadísticas iniciales
     Statistics.update();
-});
+    
+    console.log('Aplicación inicializada para usuario:', Auth.getCurrentUser().name);
+}
 
-// Módulo de gestión de información del inventario
+function resetApp() {
+    AppState.theoreticalInventory = [];
+    AppState.physicalInventory = {};
+    AppState.currentInventoryInfo = {
+        date: '',
+        store: '',
+        responsible: '',
+        observations: '',
+        auditor: ''
+    };
+    
+    Statistics.update();
+    BarcodeScanner.updateRecentScans();
+    ExcelLoader.updateCurrentInventoryTable();
+    
+    document.getElementById('generate-report').disabled = true;
+    document.getElementById('load-excel').disabled = true;
+    
+    console.log('Aplicación reinicializada');
+}
+
 const InventoryInfo = {
     init: function() {
         document.getElementById('save-info').addEventListener('click', this.save.bind(this));
+        
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('inventory-date').value = today;
     },
     
     save: function() {
         const date = document.getElementById('inventory-date').value;
-        const store = document.getElementById('store').value;
-        const responsible = document.getElementById('responsible').value;
+        const store = document.getElementById('store').value.trim();
+        const responsible = document.getElementById('responsible').value.trim();
+        const observations = document.getElementById('observations').value.trim();
         
         if (!date || !store || !responsible) {
-            alert('Por favor, complete todos los campos de información del inventario.');
+            alert('Por favor, complete todos los campos obligatorios (*) del inventario.');
             return;
         }
         
-        AppState.currentInventoryInfo = { date, store, responsible };
-        alert(`Información guardada:\nFecha: ${date}\nTienda: ${store}\nResponsable: ${responsible}`);
+        AppState.currentInventoryInfo = { 
+            date, 
+            store, 
+            responsible, 
+            observations,
+            auditor: Auth.getCurrentUser()?.name || 'No identificado'
+        };
+        
+        this.showSuccessMessage();
+    },
+    
+    showSuccessMessage: function() {
+        const btn = document.getElementById('save-info');
+        const originalText = btn.innerHTML;
+        
+        btn.innerHTML = '<i class="fas fa-check me-2"></i>Información Guardada';
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-primary');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-success');
+        }, 2000);
     },
     
     getCurrentInfo: function() {
@@ -60,13 +121,11 @@ const InventoryInfo = {
     }
 };
 
-// Módulo de estadísticas
 const Statistics = {
     update: function() {
         const totalProducts = AppState.theoreticalInventory.length;
         const scannedProducts = Object.keys(AppState.physicalInventory).length;
         
-        // Calcular discrepancias
         let discrepancies = 0;
         AppState.theoreticalInventory.forEach(product => {
             const scannedQty = AppState.physicalInventory[product.code] || 0;
@@ -75,12 +134,10 @@ const Statistics = {
             }
         });
         
-        // Actualizar elementos del DOM
         document.getElementById('total-products').textContent = totalProducts;
         document.getElementById('scanned-products').textContent = scannedProducts;
         document.getElementById('discrepancies-count').textContent = discrepancies;
         
-        // Actualizar barra de progreso
         const progressPercentage = totalProducts > 0 ? Math.round((scannedProducts / totalProducts) * 100) : 0;
         const progressBar = document.getElementById('progress-bar');
         progressBar.style.width = `${progressPercentage}%`;
@@ -89,7 +146,6 @@ const Statistics = {
     }
 };
 
-// Módulo de historial de inventarios
 const InventoryHistory = {
     render: function() {
         const container = document.getElementById('inventory-history');
@@ -105,10 +161,12 @@ const InventoryHistory = {
             historyItem.className = 'history-item';
             
             const progressPercentage = Math.round((entry.scannedProducts / entry.totalProducts) * 100);
+            const date = new Date(entry.date).toLocaleDateString('es-ES');
             
             historyItem.innerHTML = `
-                <h6>${entry.date} - ${entry.store}</h6>
+                <h6>${date} - ${entry.store}</h6>
                 <p class="mb-1"><strong>Responsable:</strong> ${entry.responsible}</p>
+                <p class="mb-1"><strong>Auditor:</strong> ${entry.auditor || 'N/A'}</p>
                 <p class="mb-1"><strong>Productos:</strong> ${entry.scannedProducts}/${entry.totalProducts} (${progressPercentage}%)</p>
                 <p class="mb-0"><strong>Discrepancias:</strong> ${entry.discrepancies}</p>
             `;
@@ -120,21 +178,25 @@ const InventoryHistory = {
     add: function(entry) {
         AppState.inventoryHistory.unshift(entry);
         
-        // Mantener solo los últimos 5 registros
         if (AppState.inventoryHistory.length > 5) {
             AppState.inventoryHistory = AppState.inventoryHistory.slice(0, 5);
         }
         
-        // Guardar en localStorage
         localStorage.setItem('inventoryHistory', JSON.stringify(AppState.inventoryHistory));
-        
-        // Actualizar la vista
+        this.render();
+    },
+    
+    clear: function() {
+        AppState.inventoryHistory = [];
+        localStorage.removeItem('inventoryHistory');
         this.render();
     }
 };
 
-// Exportar el estado para que otros módulos puedan acceder a él
 window.AppState = AppState;
 window.Statistics = Statistics;
 window.InventoryHistory = InventoryHistory;
 window.InventoryInfo = InventoryInfo;
+window.Auth = Auth;
+window.initializeApp = initializeApp;
+window.resetApp = resetApp;

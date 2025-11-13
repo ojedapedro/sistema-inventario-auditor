@@ -1,211 +1,642 @@
-// Módulo para generar informes PDF
-
+// Módulo para generar informes PDF - Versión Mejorada
 const PDFGenerator = {
+    // Configuración de estilos
+    styles: {
+        primaryColor: [44, 62, 80],
+        secondaryColor: [52, 152, 219],
+        successColor: [39, 174, 96],
+        warningColor: [243, 156, 18],
+        dangerColor: [231, 76, 60],
+        lightColor: [236, 240, 241],
+        darkColor: [52, 73, 94]
+    },
+
+    // Configuración del documento
+    config: {
+        margin: 20,
+        pageWidth: 210, // A4 width in mm
+        pageHeight: 297, // A4 height in mm
+        contentWidth: 170,
+        lineHeight: 5,
+        logo: {
+            width: 40,
+            height: 20,
+            position: { x: 20, y: 15 }
+        }
+    },
+
+    // Estado actual del PDF
+    currentDoc: null,
+    currentY: 0,
+
     init: function() {
         document.getElementById('generate-report').addEventListener('click', () => this.generatePDFReport());
+        console.log('PDF Generator inicializado correctamente');
     },
 
     generatePDFReport: function() {
-        if (AppState.theoreticalInventory.length === 0) {
-            alert('Primero debe cargar el inventario teórico.');
+        // Validaciones previas
+        if (!this.validatePrerequisites()) {
             return;
         }
 
-        // Crear un nuevo documento PDF
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-
-        // Información del inventario
-        const inventoryInfo = InventoryInfo.getCurrentInfo();
-        const date = inventoryInfo.date || 'No especificada';
-        const store = inventoryInfo.store || 'No especificada';
-        const responsible = inventoryInfo.responsible || 'No especificada';
-
-        // Intentar cargar y agregar el logo
-        this.addLogoToPDF(doc, date, store, responsible);
-    },
-
-    addLogoToPDF: function(doc, date, store, responsible) {
-        const logoUrl = 'assets/images/logo.png';
+        this.showGeneratingState();
         
-        // Crear una imagen para el logo
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.src = logoUrl;
-
-        // Timeout para evitar que se quede bloqueado si la imagen no carga
-        const logoTimeout = setTimeout(() => {
-            console.warn("Timeout al cargar el logo, generando PDF sin logo");
-            this.generatePDFContent(doc, date, store, responsible, null);
-        }, 3000);
-
-        img.onload = () => {
-            clearTimeout(logoTimeout);
-            this.generatePDFContent(doc, date, store, responsible, img);
-        };
-
-        img.onerror = () => {
-            clearTimeout(logoTimeout);
-            console.error("Error al cargar el logo, generando PDF sin logo");
-            this.generatePDFContent(doc, date, store, responsible, null);
-        };
+        // Pequeño delay para permitir que la UI se actualice
+        setTimeout(() => {
+            try {
+                this.createPDFDocument();
+                this.hideGeneratingState();
+                this.showSuccessMessage();
+            } catch (error) {
+                console.error('Error generando PDF:', error);
+                this.hideGeneratingState();
+                this.showErrorMessage('Error al generar el PDF: ' + error.message);
+            }
+        }, 500);
     },
 
-    generatePDFContent: function(doc, date, store, responsible, logoImg) {
-        // Agregar logo si está disponible
-        if (logoImg) {
-            try {
-                doc.addImage(logoImg, 'PNG', 20, 15, 40, 20);
-                // Título del informe
-                doc.setFontSize(20);
-                doc.setTextColor(0, 0, 0);
-                doc.text('Informe de Incidencias de Inventario', 70, 30);
-            } catch (e) {
-                console.error("Error al agregar logo al PDF:", e);
-                // Continuar sin logo
-                doc.setFontSize(20);
-                doc.setTextColor(0, 0, 0);
-                doc.text('Informe de Incidencias de Inventario', 20, 30);
-            }
-        } else {
-            // Título sin logo
-            doc.setFontSize(20);
-            doc.setTextColor(0, 0, 0);
-            doc.text('Informe de Incidencias de Inventario', 20, 30);
+    validatePrerequisites: function() {
+        if (!Auth.isAuthenticated()) {
+            alert('Debe iniciar sesión para generar informes.');
+            return false;
         }
 
-        // Información del inventario
-        doc.setFontSize(12);
-        let startY = logoImg ? 50 : 40;
+        if (AppState.theoreticalInventory.length === 0) {
+            alert('Primero debe cargar el inventario teórico.');
+            return false;
+        }
+
+        const inventoryInfo = InventoryInfo.getCurrentInfo();
+        if (!inventoryInfo.date || !inventoryInfo.store || !inventoryInfo.responsible) {
+            alert('Complete la información del inventario (fecha, tienda y responsable) antes de generar el informe.');
+            return false;
+        }
+
+        if (typeof jspdf === 'undefined') {
+            alert('Error: La librería PDF no está cargada correctamente.');
+            return false;
+        }
+
+        return true;
+    },
+
+    createPDFDocument: function() {
+        const { jsPDF } = window.jspdf;
+        this.currentDoc = new jsPDF();
+        this.currentY = this.config.margin;
+
+        // Configurar propiedades del documento
+        this.setDocumentProperties();
+
+        // Generar contenido en orden
+        this.generateHeader();
+        this.generateInventoryInfo();
+        this.generateObservations();
+        this.generateSummary();
+        this.generateDiscrepanciesTable();
+        this.generateFooter();
+
+        // Guardar el documento
+        this.saveDocument();
         
-        doc.text(`Fecha del Inventario: ${date}`, 20, startY);
-        doc.text(`Tienda: ${store}`, 20, startY + 10);
-        doc.text(`Responsable: ${responsible}`, 20, startY + 20);
+        // Registrar en historial
+        this.recordInHistory();
+    },
 
-        // Resumen
-        doc.setFontSize(16);
-        doc.text('Resumen del Inventario', 20, startY + 40);
+    setDocumentProperties: function() {
+        const inventoryInfo = InventoryInfo.getCurrentInfo();
+        this.currentDoc.setProperties({
+            title: `Informe de Inventario - ${inventoryInfo.store} - ${inventoryInfo.date}`,
+            subject: 'Auditoría de Inventario',
+            author: inventoryInfo.auditor || 'Sistema de Inventario',
+            creator: 'Sistema de Control de Inventario',
+            keywords: 'inventario, auditoría, discrepancias, informe'
+        });
+    },
 
-        doc.setFontSize(12);
+    generateHeader: function() {
+        const logoLoaded = this.addLogo();
+        
+        // Título principal
+        this.currentDoc.setFontSize(20);
+        this.currentDoc.setFont('helvetica', 'bold');
+        this.currentDoc.setTextColor(...this.styles.primaryColor);
+        
+        const titleX = logoLoaded ? 70 : this.config.margin;
+        this.currentDoc.text('INFORME DE AUDITORÍA DE INVENTARIO', titleX, 30);
+        
+        // Línea decorativa
+        this.currentDoc.setDrawColor(...this.styles.secondaryColor);
+        this.currentDoc.setLineWidth(0.5);
+        this.currentDoc.line(this.config.margin, 35, 190, 35);
+        
+        this.currentY = 45;
+    },
+
+    addLogo: function() {
+        try {
+            const logoUrl = 'assets/images/logo.png';
+            const img = new Image();
+            
+            // Intentar cargar el logo de forma síncrona con timeout
+            let loaded = false;
+            img.onload = () => {
+                loaded = true;
+                try {
+                    this.currentDoc.addImage(
+                        img, 
+                        'PNG', 
+                        this.config.logo.position.x, 
+                        this.config.logo.position.y, 
+                        this.config.logo.width, 
+                        this.config.logo.height
+                    );
+                } catch (e) {
+                    console.warn('No se pudo agregar el logo al PDF:', e);
+                }
+            };
+            
+            img.onerror = () => {
+                loaded = false;
+            };
+            
+            img.src = logoUrl;
+            
+            // Esperar un momento para ver si la imagen carga
+            // En un entorno real, esto debería manejarse con promesas
+            return loaded;
+        } catch (error) {
+            console.warn('Error cargando logo:', error);
+            return false;
+        }
+    },
+
+    generateInventoryInfo: function() {
+        const inventoryInfo = InventoryInfo.getCurrentInfo();
+        
+        this.currentDoc.setFontSize(11);
+        this.currentDoc.setFont('helvetica', 'normal');
+        this.currentDoc.setTextColor(...this.styles.darkColor);
+
+        // Crear tabla de información
+        const infoData = [
+            ['Fecha del Inventario:', inventoryInfo.date || 'No especificada'],
+            ['Tienda:', inventoryInfo.store || 'No especificada'],
+            ['Responsable:', inventoryInfo.responsible || 'No especificada'],
+            ['Auditor:', inventoryInfo.auditor || 'No identificado'],
+            ['Fecha de Generación:', new Date().toLocaleDateString('es-ES')],
+            ['Hora de Generación:', new Date().toLocaleTimeString('es-ES')]
+        ];
+
+        infoData.forEach(([label, value], index) => {
+            const yPos = this.currentY + (index * 6);
+            this.currentDoc.setFont('helvetica', 'bold');
+            this.currentDoc.text(label, this.config.margin, yPos);
+            this.currentDoc.setFont('helvetica', 'normal');
+            this.currentDoc.text(value, this.config.margin + 45, yPos);
+        });
+
+        this.currentY += (infoData.length * 6) + 10;
+    },
+
+    generateObservations: function() {
+        const observations = InventoryInfo.getCurrentInfo().observations;
+        
+        if (observations && observations.trim() !== '' && observations !== 'No hay observaciones') {
+            this.checkPageBreak(20);
+            
+            this.currentDoc.setFontSize(12);
+            this.currentDoc.setFont('helvetica', 'bold');
+            this.currentDoc.setTextColor(...this.styles.primaryColor);
+            this.currentDoc.text('OBSERVACIONES:', this.config.margin, this.currentY);
+            
+            this.currentY += 5;
+            
+            this.currentDoc.setFontSize(10);
+            this.currentDoc.setFont('helvetica', 'normal');
+            this.currentDoc.setTextColor(...this.styles.darkColor);
+            
+            const observationsLines = this.currentDoc.splitTextToSize(observations, this.config.contentWidth);
+            this.currentDoc.text(observationsLines, this.config.margin, this.currentY);
+            
+            this.currentY += (observationsLines.length * 4) + 10;
+            
+            // Línea separadora
+            this.currentDoc.setDrawColor(200, 200, 200);
+            this.currentDoc.setLineWidth(0.2);
+            this.currentDoc.line(this.config.margin, this.currentY - 5, 190, this.currentY - 5);
+        }
+    },
+
+    generateSummary: function() {
+        this.checkPageBreak(40);
+        
+        // Título de la sección
+        this.currentDoc.setFontSize(16);
+        this.currentDoc.setFont('helvetica', 'bold');
+        this.currentDoc.setTextColor(...this.styles.primaryColor);
+        this.currentDoc.text('RESUMEN EJECUTIVO', this.config.margin, this.currentY);
+        
+        this.currentY += 8;
+        
+        // Estadísticas
+        const stats = this.calculateStatistics();
+        
+        this.currentDoc.setFontSize(11);
+        this.currentDoc.setFont('helvetica', 'normal');
+        
+        const summaryData = [
+            { label: 'Total de Productos en Inventario:', value: stats.totalProducts, color: this.styles.primaryColor },
+            { label: 'Productos Escaneados:', value: stats.scannedProducts, color: this.styles.secondaryColor },
+            { label: 'Progreso de Escaneo:', value: `${stats.progressPercentage}%`, color: this.styles.secondaryColor },
+            { label: 'Coincidencias Perfectas:', value: `${stats.matchPercentage}%`, color: this.styles.successColor },
+            { label: 'Discrepancias Encontradas:', value: stats.discrepancies, color: stats.discrepancies > 0 ? this.styles.dangerColor : this.styles.successColor }
+        ];
+
+        summaryData.forEach((item, index) => {
+            const yPos = this.currentY + (index * 6);
+            
+            this.currentDoc.setFont('helvetica', 'bold');
+            this.currentDoc.setTextColor(...this.styles.darkColor);
+            this.currentDoc.text(item.label, this.config.margin, yPos);
+            
+            this.currentDoc.setFont('helvetica', 'bold');
+            this.currentDoc.setTextColor(...item.color);
+            this.currentDoc.text(item.value.toString(), this.config.margin + 60, yPos);
+        });
+
+        this.currentY += (summaryData.length * 6) + 15;
+    },
+
+    calculateStatistics: function() {
         const totalProducts = AppState.theoreticalInventory.length;
         const scannedProducts = Object.keys(AppState.physicalInventory).length;
         const progressPercentage = totalProducts > 0 ? Math.round((scannedProducts / totalProducts) * 100) : 0;
 
-        // Calcular discrepancias
         let discrepancies = 0;
-        const discrepancyData = [];
-
         AppState.theoreticalInventory.forEach(product => {
             const scannedQty = AppState.physicalInventory[product.code] || 0;
             if (scannedQty !== product.quantity) {
                 discrepancies++;
-                discrepancyData.push([
-                    product.code,
-                    product.name,
-                    product.quantity.toString(),
-                    scannedQty.toString(),
-                    (scannedQty - product.quantity).toString()
-                ]);
             }
         });
 
-        doc.text(`Productos en inventario teórico: ${totalProducts}`, 20, startY + 55);
-        doc.text(`Productos escaneados: ${scannedProducts}`, 20, startY + 65);
-        doc.text(`Progreso: ${progressPercentage}%`, 20, startY + 75);
-        doc.text(`Discrepancias encontradas: ${discrepancies}`, 20, startY + 85);
+        const matchPercentage = totalProducts > 0 ? Math.round(((totalProducts - discrepancies) / totalProducts) * 100) : 0;
 
-        // Tabla de discrepancias
-        if (discrepancyData.length > 0) {
-            doc.setFontSize(16);
-            doc.text('Detalle de Discrepancias', 20, startY + 105);
+        return {
+            totalProducts,
+            scannedProducts,
+            progressPercentage,
+            discrepancies,
+            matchPercentage
+        };
+    },
 
-            try {
-                doc.autoTable({
-                    startY: startY + 110,
-                    head: [['Código', 'Producto', 'Teórico', 'Físico', 'Diferencia']],
-                    body: discrepancyData,
-                    theme: 'grid',
-                    headStyles: { 
-                        fillColor: [44, 62, 80],
-                        textColor: 255,
-                        fontStyle: 'bold'
-                    },
-                    styles: { 
-                        fontSize: 10, 
-                        cellPadding: 3,
-                        overflow: 'linebreak'
-                    },
-                    columnStyles: {
-                        0: { cellWidth: 25 },
-                        1: { cellWidth: 60 },
-                        2: { cellWidth: 20 },
-                        3: { cellWidth: 20 },
-                        4: { cellWidth: 25 }
-                    },
-                    margin: { top: 10 }
-                });
-            } catch (e) {
-                console.error("Error al generar tabla:", e);
-                // Generar tabla manualmente si autoTable falla
-                this.generateManualTable(doc, discrepancyData, startY + 110);
-            }
-        } else {
-            doc.setFontSize(14);
-            doc.text('No se encontraron discrepancias en el inventario.', 20, startY + 105);
-        }
-
-        // Guardar el PDF
-        try {
-            doc.save(`Informe_Inventario_${date.replace(/-/g, '') || 'sin_fecha'}.pdf`);
-        } catch (e) {
-            console.error("Error al guardar PDF:", e);
-            alert('Error al generar el PDF. Por favor, intente nuevamente.');
+    generateDiscrepanciesTable: function() {
+        const discrepancies = this.getDiscrepanciesData();
+        
+        if (discrepancies.length === 0) {
+            this.checkPageBreak(15);
+            
+            this.currentDoc.setFontSize(12);
+            this.currentDoc.setFont('helvetica', 'bold');
+            this.currentDoc.setTextColor(...this.styles.successColor);
+            this.currentDoc.text('✅ NO SE ENCONTRARON DISCREPANCIAS EN EL INVENTARIO', this.config.margin, this.currentY);
+            this.currentY += 10;
             return;
         }
 
-        // Guardar en el historial
+        this.checkPageBreak(30);
+        
+        // Título de la tabla
+        this.currentDoc.setFontSize(14);
+        this.currentDoc.setFont('helvetica', 'bold');
+        this.currentDoc.setTextColor(...this.styles.primaryColor);
+        this.currentDoc.text('DETALLE DE DISCREPANCIAS', this.config.margin, this.currentY);
+        
+        this.currentY += 8;
+
+        // Generar tabla usando autoTable si está disponible
+        if (typeof this.currentDoc.autoTable !== 'undefined') {
+            this.generateAutoTable(discrepancies);
+        } else {
+            this.generateManualTable(discrepancies);
+        }
+    },
+
+    getDiscrepanciesData: function() {
+        const discrepancies = [];
+        
+        AppState.theoreticalInventory.forEach(product => {
+            const scannedQty = AppState.physicalInventory[product.code] || 0;
+            if (scannedQty !== product.quantity) {
+                const difference = scannedQty - product.quantity;
+                discrepancies.push({
+                    code: product.code,
+                    name: product.name,
+                    theoretical: product.quantity,
+                    physical: scannedQty,
+                    difference: difference,
+                    status: difference > 0 ? 'EXCEDENTE' : difference < 0 ? 'FALTANTE' : 'CORRECTO'
+                });
+            }
+        });
+
+        return discrepancies;
+    },
+
+    generateAutoTable: function(discrepancies) {
+        const tableData = discrepancies.map(item => [
+            item.code,
+            item.name,
+            item.theoretical.toString(),
+            item.physical.toString(),
+            item.difference.toString(),
+            item.status
+        ]);
+
+        try {
+            this.currentDoc.autoTable({
+                startY: this.currentY,
+                head: [['CÓDIGO', 'PRODUCTO', 'TEÓRICO', 'FÍSICO', 'DIFERENCIA', 'ESTADO']],
+                body: tableData,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: this.styles.primaryColor,
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 9
+                },
+                bodyStyles: {
+                    fontSize: 8,
+                    cellPadding: 2,
+                    overflow: 'linebreak'
+                },
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 2,
+                    lineColor: [200, 200, 200],
+                    lineWidth: 0.1
+                },
+                columnStyles: {
+                    0: { cellWidth: 22, fontStyle: 'bold' },
+                    1: { cellWidth: 70 },
+                    2: { cellWidth: 18, halign: 'center' },
+                    3: { cellWidth: 18, halign: 'center' },
+                    4: { 
+                        cellWidth: 20, 
+                        halign: 'center',
+                        fontStyle: 'bold'
+                    },
+                    5: { 
+                        cellWidth: 22, 
+                        halign: 'center',
+                        fontStyle: 'bold'
+                    }
+                },
+                didDrawCell: (data) => {
+                    // Colorear celdas de diferencia y estado
+                    if (data.column.index === 4 || data.column.index === 5) {
+                        const value = data.cell.raw;
+                        if (value > 0) {
+                            this.currentDoc.setFillColor(...this.styles.warningColor);
+                        } else if (value < 0) {
+                            this.currentDoc.setFillColor(...this.styles.dangerColor);
+                        } else {
+                            this.currentDoc.setFillColor(...this.styles.successColor);
+                        }
+                        
+                        if (data.column.index === 5) {
+                            // Para la columna de estado, aplicar color de fondo
+                            this.currentDoc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+                            this.currentDoc.setTextColor(255, 255, 255);
+                        }
+                    }
+                },
+                margin: { top: 10, bottom: 10 }
+            });
+
+            this.currentY = this.currentDoc.lastAutoTable.finalY + 10;
+        } catch (error) {
+            console.error('Error con autoTable, usando tabla manual:', error);
+            this.generateManualTable(discrepancies);
+        }
+    },
+
+    generateManualTable: function(discrepancies) {
+        // Encabezados de la tabla
+        this.currentDoc.setFontSize(9);
+        this.currentDoc.setFont('helvetica', 'bold');
+        this.currentDoc.setTextColor(255, 255, 255);
+        this.currentDoc.setFillColor(...this.styles.primaryColor);
+        
+        // Dibujar fila de encabezados
+        this.currentDoc.rect(this.config.margin, this.currentY, 170, 6, 'F');
+        this.currentDoc.text('CÓDIGO', this.config.margin + 2, this.currentY + 4);
+        this.currentDoc.text('PRODUCTO', this.config.margin + 25, this.currentY + 4);
+        this.currentDoc.text('TEÓRICO', this.config.margin + 95, this.currentY + 4);
+        this.currentDoc.text('FÍSICO', this.config.margin + 115, this.currentY + 4);
+        this.currentDoc.text('DIFERENCIA', this.config.margin + 135, this.currentY + 4);
+        this.currentDoc.text('ESTADO', this.config.margin + 155, this.currentY + 4);
+
+        this.currentY += 8;
+
+        // Datos de la tabla
+        this.currentDoc.setFontSize(8);
+        this.currentDoc.setFont('helvetica', 'normal');
+        
+        discrepancies.forEach((item, index) => {
+            this.checkPageBreak(8);
+            
+            // Fondo alternado para mejor legibilidad
+            if (index % 2 === 0) {
+                this.currentDoc.setFillColor(245, 245, 245);
+                this.currentDoc.rect(this.config.margin, this.currentY - 2, 170, 6, 'F');
+            }
+
+            this.currentDoc.setTextColor(0, 0, 0);
+            this.currentDoc.text(item.code, this.config.margin + 2, this.currentY);
+            
+            // Acortar nombre del producto si es muy largo
+            const productName = item.name.length > 30 ? item.name.substring(0, 27) + '...' : item.name;
+            this.currentDoc.text(productName, this.config.margin + 25, this.currentY);
+            
+            this.currentDoc.text(item.theoretical.toString(), this.config.margin + 95, this.currentY);
+            this.currentDoc.text(item.physical.toString(), this.config.margin + 115, this.currentY);
+            
+            // Diferencia con color
+            if (item.difference > 0) {
+                this.currentDoc.setTextColor(...this.styles.warningColor);
+                this.currentDoc.text('+' + item.difference.toString(), this.config.margin + 135, this.currentY);
+            } else if (item.difference < 0) {
+                this.currentDoc.setTextColor(...this.styles.dangerColor);
+                this.currentDoc.text(item.difference.toString(), this.config.margin + 135, this.currentY);
+            } else {
+                this.currentDoc.setTextColor(...this.styles.successColor);
+                this.currentDoc.text(item.difference.toString(), this.config.margin + 135, this.currentY);
+            }
+            
+            // Estado con fondo de color
+            const statusWidth = 15;
+            const statusX = this.config.margin + 155;
+            
+            if (item.difference > 0) {
+                this.currentDoc.setFillColor(...this.styles.warningColor);
+            } else if (item.difference < 0) {
+                this.currentDoc.setFillColor(...this.styles.dangerColor);
+            } else {
+                this.currentDoc.setFillColor(...this.styles.successColor);
+            }
+            
+            this.currentDoc.rect(statusX, this.currentY - 2, statusWidth, 4, 'F');
+            this.currentDoc.setTextColor(255, 255, 255);
+            this.currentDoc.setFontSize(6);
+            
+            const statusText = item.difference > 0 ? '+' : item.difference < 0 ? '-' : 'OK';
+            this.currentDoc.text(statusText, statusX + 2, this.currentY);
+            
+            this.currentDoc.setFontSize(8);
+            this.currentY += 6;
+        });
+
+        this.currentY += 5;
+    },
+
+    generateFooter: function() {
+        this.checkPageBreak(20);
+        
+        // Línea separadora
+        this.currentDoc.setDrawColor(200, 200, 200);
+        this.currentDoc.setLineWidth(0.2);
+        this.currentDoc.line(this.config.margin, this.currentY, 190, this.currentY);
+        this.currentY += 5;
+        
+        // Texto del footer
+        this.currentDoc.setFontSize(8);
+        this.currentDoc.setFont('helvetica', 'italic');
+        this.currentDoc.setTextColor(150, 150, 150);
+        this.currentDoc.text('Documento generado automáticamente por el Sistema de Control de Inventario', this.config.margin, this.currentY);
+        this.currentY += 4;
+        this.currentDoc.text('https://github.com/tu-usuario/inventory-control-system', this.config.margin, this.currentY);
+    },
+
+    checkPageBreak: function(requiredHeight) {
+        if (this.currentY + requiredHeight > this.config.pageHeight - this.config.margin) {
+            this.currentDoc.addPage();
+            this.currentY = this.config.margin;
+            return true;
+        }
+        return false;
+    },
+
+    saveDocument: function() {
+        const inventoryInfo = InventoryInfo.getCurrentInfo();
+        const safeStoreName = inventoryInfo.store.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '_');
+        const safeDate = inventoryInfo.date.replace(/-/g, '');
+        const fileName = `Informe_Inventario_${safeStoreName}_${safeDate}.pdf`;
+        
+        this.currentDoc.save(fileName);
+    },
+
+    recordInHistory: function() {
+        const inventoryInfo = InventoryInfo.getCurrentInfo();
+        const stats = this.calculateStatistics();
+        
         InventoryHistory.add({
-            date,
-            store,
-            responsible,
-            totalProducts,
-            scannedProducts,
-            discrepancies,
+            date: inventoryInfo.date,
+            store: inventoryInfo.store,
+            responsible: inventoryInfo.responsible,
+            auditor: inventoryInfo.auditor,
+            observations: inventoryInfo.observations,
+            totalProducts: stats.totalProducts,
+            scannedProducts: stats.scannedProducts,
+            discrepancies: stats.discrepancies,
+            matchPercentage: stats.matchPercentage,
             timestamp: new Date().toISOString()
         });
     },
 
-    generateManualTable: function(doc, data, startY) {
-        // Implementación simple de tabla manual si autoTable falla
-        doc.setFontSize(10);
-        let y = startY;
+    showGeneratingState: function() {
+        const btn = document.getElementById('generate-report');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generando PDF...';
+        btn.disabled = true;
+        btn.classList.add('loading');
+    },
+
+    hideGeneratingState: function() {
+        const btn = document.getElementById('generate-report');
+        btn.innerHTML = '<i class="fas fa-download me-2"></i>Generar y Descargar PDF';
+        btn.disabled = false;
+        btn.classList.remove('loading');
+    },
+
+    showSuccessMessage: function() {
+        this.showToast('¡PDF generado correctamente!', 'success');
+    },
+
+    showErrorMessage: function(message) {
+        this.showToast(message, 'danger');
+    },
+
+    showToast: function(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-bg-${type} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
         
-        // Encabezados
-        doc.setFillColor(44, 62, 80);
-        doc.setTextColor(255, 255, 255);
-        doc.rect(20, y, 170, 8, 'F');
-        doc.text('Código', 22, y + 6);
-        doc.text('Producto', 50, y + 6);
-        doc.text('Teórico', 120, y + 6);
-        doc.text('Físico', 140, y + 6);
-        doc.text('Diferencia', 160, y + 6);
+        const container = this.getToastContainer();
+        container.appendChild(toast);
         
-        y += 10;
-        doc.setTextColor(0, 0, 0);
-        
-        // Datos
-        data.forEach(row => {
-            if (y > 280) {
-                doc.addPage();
-                y = 20;
-            }
-            
-            doc.text(row[0], 22, y);
-            doc.text(row[1].substring(0, 30), 50, y); // Limitar longitud
-            doc.text(row[2], 120, y);
-            doc.text(row[3], 140, y);
-            doc.text(row[4], 160, y);
-            y += 6;
+        const bsToast = new bootstrap.Toast(toast, {
+            autohide: true,
+            delay: 5000
         });
+        
+        bsToast.show();
+        
+        toast.addEventListener('hidden.bs.toast', () => {
+            toast.remove();
+        });
+    },
+
+    getToastContainer: function() {
+        let container = document.getElementById('pdf-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'pdf-toast-container';
+            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+            container.style.zIndex = '9999';
+            document.body.appendChild(container);
+        }
+        return container;
+    },
+
+    // Método de utilidad para debug
+    debug: function() {
+        console.log('=== DEBUG PDF GENERATOR ===');
+        console.log('Dependencias cargadas:', {
+            jsPDF: typeof jspdf !== 'undefined',
+            autoTable: typeof window.jspdf?.jsPDF?.autoTable !== 'undefined'
+        });
+        console.log('Estado de la aplicación:', {
+            autenticado: Auth.isAuthenticated(),
+            inventarioTeorico: AppState.theoreticalInventory.length,
+            inventarioFisico: Object.keys(AppState.physicalInventory).length,
+            informacion: InventoryInfo.getCurrentInfo()
+        });
+        console.log('Discrepancias:', this.getDiscrepanciesData().length);
+        console.log('======================');
     }
 };
+
+// Exponer para debugging
+window.PDFGenerator = PDFGenerator;
