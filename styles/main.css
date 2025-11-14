@@ -289,3 +289,84 @@ body {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+/* Estilos para la edición de escaneos */
+.table tr.editing {
+    background-color: #fff3cd !important;
+    border-left: 4px solid #ffc107;
+}
+
+.table tr.editing td {
+    animation: pulse-editing 2s infinite;
+}
+
+@keyframes pulse-editing {
+    0% { background-color: #fff3cd; }
+    50% { background-color: #ffeaa7; }
+    100% { background-color: #fff3cd; }
+}
+
+.action-buttons {
+    white-space: nowrap;
+}
+
+.action-buttons .btn {
+    margin: 0 2px;
+    padding: 4px 8px;
+}
+
+.edit-quantity {
+    text-align: center;
+    font-weight: bold;
+}
+
+/* Mejoras para la tabla de escaneos */
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.table tbody tr.table-warning:hover {
+    background-color: #fff3cd;
+}
+
+.table tbody tr.table-danger:hover {
+    background-color: #f8d7da;
+}
+
+/* Modal de confirmación personalizado */
+.modal-danger .modal-header {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Responsive para botones de acción */
+@media (max-width: 768px) {
+    .action-buttons .btn {
+        margin: 1px;
+        padding: 3px 6px;
+    }
+    
+    .action-buttons .btn-sm {
+        font-size: 0.75rem;
+    }
+}
+
+/* Estados de los botones */
+.btn-outline-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.btn-outline-danger:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(220,53,69,0.2);
+}
+
+/* Efectos de transición */
+.table tbody tr {
+    transition: all 0.3s ease;
+}
+
+.action-buttons .btn {
+    transition: all 0.2s ease;
+}

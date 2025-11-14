@@ -1,4 +1,4 @@
-// Módulo para el escaneo de códigos de barras
+// Módulo para el escaneo de códigos de barras con funciones de edición
 
 const BarcodeScanner = {
     init: function() {
@@ -14,6 +14,7 @@ const BarcodeScanner = {
         });
         
         this.setupKeyboardShortcuts();
+        this.setupEventDelegation();
     },
     
     setupKeyboardShortcuts: function() {
@@ -21,6 +22,44 @@ const BarcodeScanner = {
             if (e.ctrlKey && e.key === 'k') {
                 e.preventDefault();
                 this.barcodeInput.focus();
+            }
+            
+            // Escape para cancelar edición
+            if (e.key === 'Escape') {
+                this.cancelEdit();
+            }
+        });
+    },
+    
+    setupEventDelegation: function() {
+        // Usar delegación de eventos para los botones dinámicos
+        this.recentScansTable.addEventListener('click', (e) => {
+            const target = e.target;
+            
+            // Botón editar
+            if (target.closest('.edit-scan')) {
+                const button = target.closest('.edit-scan');
+                const barcode = button.dataset.barcode;
+                this.startEditScan(barcode);
+            }
+            
+            // Botón eliminar
+            if (target.closest('.delete-scan')) {
+                const button = target.closest('.delete-scan');
+                const barcode = button.dataset.barcode;
+                this.deleteScan(barcode);
+            }
+            
+            // Botón guardar edición
+            if (target.closest('.save-edit')) {
+                const button = target.closest('.save-edit');
+                const barcode = button.dataset.barcode;
+                this.saveEdit(barcode);
+            }
+            
+            // Botón cancelar edición
+            if (target.closest('.cancel-edit')) {
+                this.cancelEdit();
             }
         });
     },
@@ -136,7 +175,7 @@ const BarcodeScanner = {
         if (Object.keys(AppState.physicalInventory).length === 0) {
             this.recentScansTable.innerHTML = `
                 <tr>
-                    <td colspan="5" class="text-center text-muted py-4">
+                    <td colspan="6" class="text-center text-muted py-4">
                         <i class="fas fa-barcode fa-2x mb-2 d-block"></i>
                         No se han escaneado productos aún
                     </td>
@@ -157,31 +196,254 @@ const BarcodeScanner = {
             const scannedQty = AppState.physicalInventory[barcode];
             const difference = scannedQty - theoreticalQty;
             
-            let status, badgeClass;
+            let status, badgeClass, statusText;
             if (scannedQty === theoreticalQty) {
+                statusText = 'Correcto';
                 status = '<span class="badge bg-success">Correcto</span>';
                 badgeClass = '';
             } else if (scannedQty > theoreticalQty) {
+                statusText = `+${difference}`;
                 status = `<span class="badge bg-warning">+${difference}</span>`;
                 badgeClass = 'table-warning';
             } else {
+                statusText = `${difference}`;
                 status = `<span class="badge bg-danger">${difference}</span>`;
                 badgeClass = 'table-danger';
             }
             
             const row = document.createElement('tr');
             if (badgeClass) row.classList.add(badgeClass);
+            row.dataset.barcode = barcode;
             
             row.innerHTML = `
                 <td><code>${barcode}</code></td>
                 <td>${product.name}</td>
                 <td>${theoreticalQty}</td>
-                <td>${scannedQty}</td>
-                <td>${status}</td>
+                <td class="scanned-quantity">${scannedQty}</td>
+                <td class="status-cell">${status}</td>
+                <td class="action-buttons">
+                    <button class="btn btn-sm btn-outline-primary edit-scan" data-barcode="${barcode}" title="Editar cantidad">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger delete-scan" data-barcode="${barcode}" title="Eliminar escaneo">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
             `;
             
             this.recentScansTable.appendChild(row);
         });
+    },
+    
+    startEditScan: function(barcode) {
+        // Cancelar cualquier edición en curso
+        this.cancelEdit();
+        
+        const row = this.recentScansTable.querySelector(`tr[data-barcode="${barcode}"]`);
+        if (!row) return;
+        
+        const product = AppState.theoreticalInventory.find(p => p.code === barcode);
+        const currentQty = AppState.physicalInventory[barcode];
+        
+        if (!product) return;
+        
+        // Cambiar la fila al modo edición
+        row.classList.add('editing');
+        row.innerHTML = `
+            <td><code>${barcode}</code></td>
+            <td>${product.name}</td>
+            <td>${product.quantity}</td>
+            <td>
+                <div class="input-group input-group-sm">
+                    <input type="number" 
+                           class="form-control edit-quantity" 
+                           value="${currentQty}" 
+                           min="0" 
+                           max="999"
+                           style="width: 80px;">
+                </div>
+            </td>
+            <td>
+                <span class="badge bg-secondary">Editando...</span>
+            </td>
+            <td class="action-buttons">
+                <button class="btn btn-sm btn-success save-edit" data-barcode="${barcode}" title="Guardar cambios">
+                    <i class="fas fa-check"></i>
+                </button>
+                <button class="btn btn-sm btn-secondary cancel-edit" title="Cancelar edición">
+                    <i class="fas fa-times"></i>
+                </button>
+            </td>
+        `;
+        
+        // Enfocar el campo de entrada
+        const input = row.querySelector('.edit-quantity');
+        input.focus();
+        input.select();
+        
+        // Guardar referencia a la edición actual
+        this.currentEdit = {
+            barcode: barcode,
+            originalQty: currentQty,
+            row: row
+        };
+    },
+    
+    saveEdit: function(barcode) {
+        if (!this.currentEdit || this.currentEdit.barcode !== barcode) {
+            return;
+        }
+        
+        const row = this.currentEdit.row;
+        const input = row.querySelector('.edit-quantity');
+        const newQty = parseInt(input.value);
+        
+        if (isNaN(newQty) || newQty < 0) {
+            this.showErrorMessage('Por favor ingrese una cantidad válida (número positivo)');
+            input.focus();
+            return;
+        }
+        
+        // Actualizar la cantidad en el inventario físico
+        if (newQty === 0) {
+            // Si la cantidad es 0, eliminar el producto
+            delete AppState.physicalInventory[barcode];
+            this.showSuccessMessage('Producto eliminado del inventario físico');
+        } else {
+            AppState.physicalInventory[barcode] = newQty;
+            const change = newQty - this.currentEdit.originalQty;
+            const changeText = change > 0 ? `+${change}` : change.toString();
+            this.showSuccessMessage(`Cantidad actualizada: ${changeText}`);
+        }
+        
+        // Finalizar edición
+        this.currentEdit = null;
+        
+        // Actualizar la interfaz
+        this.updateRecentScans();
+        Statistics.update();
+    },
+    
+    cancelEdit: function() {
+        if (this.currentEdit) {
+            this.currentEdit.row.classList.remove('editing');
+            this.currentEdit = null;
+            this.updateRecentScans();
+        }
+    },
+    
+    deleteScan: function(barcode) {
+        const product = AppState.theoreticalInventory.find(p => p.code === barcode);
+        if (!product) return;
+        
+        const currentQty = AppState.physicalInventory[barcode];
+        
+        // Mostrar confirmación
+        const modal = this.createDeleteModal(product, barcode, currentQty);
+        document.body.appendChild(modal);
+        
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+        
+        // Limpiar después de cerrar
+        modal.addEventListener('hidden.bs.modal', () => {
+            document.body.removeChild(modal);
+        });
+    },
+    
+    createDeleteModal: function(product, barcode, currentQty) {
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Confirmar Eliminación
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>¿Está seguro de que desea eliminar el siguiente producto del inventario físico?</p>
+                        <div class="alert alert-warning">
+                            <strong>${product.name}</strong><br>
+                            <small>Código: <code>${barcode}</code></small><br>
+                            <small>Cantidad actual: <strong>${currentQty}</strong></small>
+                        </div>
+                        <p class="text-muted">Esta acción no se puede deshacer.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </button>
+                        <button type="button" class="btn btn-danger" id="confirm-delete">
+                            <i class="fas fa-trash me-2"></i>Eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Configurar evento de confirmación
+        modal.querySelector('#confirm-delete').addEventListener('click', () => {
+            delete AppState.physicalInventory[barcode];
+            this.updateRecentScans();
+            Statistics.update();
+            this.showSuccessMessage('Producto eliminado correctamente');
+            bootstrap.Modal.getInstance(modal).hide();
+        });
+        
+        return modal;
+    },
+    
+    showSuccessMessage: function(message) {
+        this.showToast(message, 'success');
+    },
+    
+    showErrorMessage: function(message) {
+        this.showToast(message, 'danger');
+    },
+    
+    showToast: function(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-bg-${type} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+        
+        const container = this.getToastContainer();
+        container.appendChild(toast);
+        
+        const bsToast = new bootstrap.Toast(toast, {
+            autohide: true,
+            delay: 4000
+        });
+        
+        bsToast.show();
+        
+        toast.addEventListener('hidden.bs.toast', () => {
+            toast.remove();
+        });
+    },
+    
+    getToastContainer: function() {
+        let container = document.getElementById('barcode-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'barcode-toast-container';
+            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+            container.style.zIndex = '9999';
+            document.body.appendChild(container);
+        }
+        return container;
     },
     
     getScanStatistics: function() {
@@ -202,8 +464,41 @@ const BarcodeScanner = {
     },
     
     clearScans: function() {
-        AppState.physicalInventory = {};
-        this.updateRecentScans();
-        Statistics.update();
+        // Mostrar confirmación antes de limpiar todo
+        if (Object.keys(AppState.physicalInventory).length === 0) return;
+        
+        const confirmClear = confirm(`¿Está seguro de que desea eliminar todos los ${Object.keys(AppState.physicalInventory).length} productos escaneados?`);
+        
+        if (confirmClear) {
+            AppState.physicalInventory = {};
+            this.updateRecentScans();
+            Statistics.update();
+            this.showSuccessMessage('Todos los productos escaneados han sido eliminados');
+        }
+    },
+    
+    // Método para buscar producto por código
+    findProductByBarcode: function(barcode) {
+        return AppState.theoreticalInventory.find(p => p.code === barcode);
+    },
+    
+    // Método para obtener resumen de escaneos
+    getScanSummary: function() {
+        const stats = this.getScanStatistics();
+        const products = Object.keys(AppState.physicalInventory).map(barcode => {
+            const product = this.findProductByBarcode(barcode);
+            return {
+                barcode: barcode,
+                name: product ? product.name : 'Desconocido',
+                theoretical: product ? product.quantity : 0,
+                physical: AppState.physicalInventory[barcode],
+                difference: product ? AppState.physicalInventory[barcode] - product.quantity : 0
+            };
+        });
+        
+        return {
+            statistics: stats,
+            products: products
+        };
     }
 };
