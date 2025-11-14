@@ -39,7 +39,7 @@ const Auth = {
                     name: 'Pedro Ojeda',
                     role: 'admin',
                     createdAt: new Date().toISOString()
-                },
+                }
             ];
             this.saveUsers();
         }
