@@ -32,7 +32,14 @@ const Auth = {
                     name: 'Administrador',
                     role: 'admin',
                     createdAt: new Date().toISOString()
-                }
+                },
+                {   id: 3,
+                    email: 'analistadedatosnova@gmail.com',
+                    password: 'Gene.2302',
+                    name: 'Pedro Ojeda',
+                    role: 'usuario',
+                    createdAt: new Date().toISOString()
+                },
             ];
             this.saveUsers();
         }
