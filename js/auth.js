@@ -37,9 +37,9 @@ const Auth = {
                     email: 'analistadedatosnova@gmail.com',
                     password: 'Gene.2302',
                     name: 'Pedro Ojeda',
-                    role: 'admin',
+                    role: 'usuario',
                     createdAt: new Date().toISOString()
-                }
+                },
             ];
             this.saveUsers();
         }
