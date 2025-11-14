@@ -36,7 +36,7 @@ const Auth = {
                  id: 3,
                     email: 'analistadedatosnova@gmail.com',
                     password: 'Gene.2302',
-                    name: 'Administrador',
+                    name: 'Pedro Ojeda',
                     role: 'admin',
                     createdAt: new Date().toISOString()
                 }
