@@ -94,7 +94,7 @@ const PDFGenerator = {
         this.generateInventoryInfo();
         this.generateObservations();
         this.generateSummary();
-        this.generateDiscrepanciesTable();
+        this.generateFullInventoryTable(); // MODIFICACIÓN: Mostrar inventario completo
         this.generateFooter();
 
         // Guardar el documento
@@ -293,61 +293,52 @@ const PDFGenerator = {
         };
     },
 
-    generateDiscrepanciesTable: function() {
-        const discrepancies = this.getDiscrepanciesData();
+    // MODIFICACIÓN: Mostrar inventario completo en lugar de solo discrepancias
+    generateFullInventoryTable: function() {
+        const fullInventory = this.getFullInventoryData();
         
-        if (discrepancies.length === 0) {
-            this.checkPageBreak(15);
-            
-            this.currentDoc.setFontSize(12);
-            this.currentDoc.setFont('helvetica', 'bold');
-            this.currentDoc.setTextColor(...this.styles.successColor);
-            this.currentDoc.text('✅ NO SE ENCONTRARON DISCREPANCIAS EN EL INVENTARIO', this.config.margin, this.currentY);
-            this.currentY += 10;
-            return;
-        }
-
         this.checkPageBreak(30);
         
         // Título de la tabla
         this.currentDoc.setFontSize(14);
         this.currentDoc.setFont('helvetica', 'bold');
         this.currentDoc.setTextColor(...this.styles.primaryColor);
-        this.currentDoc.text('DETALLE DE DISCREPANCIAS', this.config.margin, this.currentY);
+        this.currentDoc.text('INVENTARIO COMPLETO - TODOS LOS PRODUCTOS', this.config.margin, this.currentY);
         
         this.currentY += 8;
 
         // Generar tabla usando autoTable si está disponible
         if (typeof this.currentDoc.autoTable !== 'undefined') {
-            this.generateAutoTable(discrepancies);
+            this.generateFullAutoTable(fullInventory);
         } else {
-            this.generateManualTable(discrepancies);
+            this.generateFullManualTable(fullInventory);
         }
     },
 
-    getDiscrepanciesData: function() {
-        const discrepancies = [];
+    getFullInventoryData: function() {
+        const fullInventory = [];
         
+        // Incluir todos los productos del inventario teórico
         AppState.theoreticalInventory.forEach(product => {
             const scannedQty = AppState.physicalInventory[product.code] || 0;
-            if (scannedQty !== product.quantity) {
-                const difference = scannedQty - product.quantity;
-                discrepancies.push({
-                    code: product.code,
-                    name: product.name,
-                    theoretical: product.quantity,
-                    physical: scannedQty,
-                    difference: difference,
-                    status: difference > 0 ? 'EXCEDENTE' : difference < 0 ? 'FALTANTE' : 'CORRECTO'
-                });
-            }
+            const difference = scannedQty - product.quantity;
+            
+            fullInventory.push({
+                code: product.code,
+                name: product.name,
+                theoretical: product.quantity,
+                physical: scannedQty,
+                difference: difference,
+                status: difference > 0 ? 'EXCEDENTE' : difference < 0 ? 'FALTANTE' : 'CORRECTO',
+                hasDiscrepancy: difference !== 0
+            });
         });
 
-        return discrepancies;
+        return fullInventory;
     },
 
-    generateAutoTable: function(discrepancies) {
-        const tableData = discrepancies.map(item => [
+    generateFullAutoTable: function(fullInventory) {
+        const tableData = fullInventory.map(item => [
             item.code,
             item.name,
             item.theoretical.toString(),
@@ -395,22 +386,23 @@ const PDFGenerator = {
                         fontStyle: 'bold'
                     }
                 },
+                // MODIFICACIÓN: Resaltar incidencias con colores
                 didDrawCell: (data) => {
-                    // Colorear celdas de diferencia y estado
-                    if (data.column.index === 4 || data.column.index === 5) {
-                        const value = data.cell.raw;
-                        if (value > 0) {
-                            this.currentDoc.setFillColor(...this.styles.warningColor);
-                        } else if (value < 0) {
-                            this.currentDoc.setFillColor(...this.styles.dangerColor);
-                        } else {
-                            this.currentDoc.setFillColor(...this.styles.successColor);
-                        }
+                    if (data.section === 'body') {
+                        const rowIndex = data.row.index;
+                        const item = fullInventory[rowIndex];
                         
-                        if (data.column.index === 5) {
-                            // Para la columna de estado, aplicar color de fondo
+                        if (item.hasDiscrepancy) {
+                            // ROJO para faltantes, AMARILLO para excedentes
+                            if (item.difference < 0) {
+                                // FALTANTE - ROJO
+                                this.currentDoc.setFillColor(255, 200, 200);
+                            } else {
+                                // EXCEDENTE - AMARILLO
+                                this.currentDoc.setFillColor(255, 255, 200);
+                            }
+                            
                             this.currentDoc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-                            this.currentDoc.setTextColor(255, 255, 255);
                         }
                     }
                 },
@@ -418,13 +410,17 @@ const PDFGenerator = {
             });
 
             this.currentY = this.currentDoc.lastAutoTable.finalY + 10;
+            
+            // Agregar leyenda de colores
+            this.addColorLegend();
+            
         } catch (error) {
             console.error('Error con autoTable, usando tabla manual:', error);
-            this.generateManualTable(discrepancies);
+            this.generateFullManualTable(fullInventory);
         }
     },
 
-    generateManualTable: function(discrepancies) {
+    generateFullManualTable: function(fullInventory) {
         // Encabezados de la tabla
         this.currentDoc.setFontSize(9);
         this.currentDoc.setFont('helvetica', 'bold');
@@ -446,15 +442,21 @@ const PDFGenerator = {
         this.currentDoc.setFontSize(8);
         this.currentDoc.setFont('helvetica', 'normal');
         
-        discrepancies.forEach((item, index) => {
+        fullInventory.forEach((item, index) => {
             this.checkPageBreak(8);
             
-            // Fondo alternado para mejor legibilidad
-            if (index % 2 === 0) {
-                this.currentDoc.setFillColor(245, 245, 245);
+            // MODIFICACIÓN: Resaltar incidencias con colores
+            if (item.hasDiscrepancy) {
+                if (item.difference < 0) {
+                    // FALTANTE - ROJO
+                    this.currentDoc.setFillColor(255, 200, 200);
+                } else {
+                    // EXCEDENTE - AMARILLO
+                    this.currentDoc.setFillColor(255, 255, 200);
+                }
                 this.currentDoc.rect(this.config.margin, this.currentY - 2, 170, 6, 'F');
             }
-
+            
             this.currentDoc.setTextColor(0, 0, 0);
             this.currentDoc.text(item.code, this.config.margin + 2, this.currentY);
             
@@ -477,30 +479,42 @@ const PDFGenerator = {
                 this.currentDoc.text(item.difference.toString(), this.config.margin + 135, this.currentY);
             }
             
-            // Estado con fondo de color
-            const statusWidth = 15;
-            const statusX = this.config.margin + 155;
+            // Estado
+            this.currentDoc.setTextColor(0, 0, 0);
+            this.currentDoc.text(item.status, this.config.margin + 155, this.currentY);
             
-            if (item.difference > 0) {
-                this.currentDoc.setFillColor(...this.styles.warningColor);
-            } else if (item.difference < 0) {
-                this.currentDoc.setFillColor(...this.styles.dangerColor);
-            } else {
-                this.currentDoc.setFillColor(...this.styles.successColor);
-            }
-            
-            this.currentDoc.rect(statusX, this.currentY - 2, statusWidth, 4, 'F');
-            this.currentDoc.setTextColor(255, 255, 255);
-            this.currentDoc.setFontSize(6);
-            
-            const statusText = item.difference > 0 ? '+' : item.difference < 0 ? '-' : 'OK';
-            this.currentDoc.text(statusText, statusX + 2, this.currentY);
-            
-            this.currentDoc.setFontSize(8);
             this.currentY += 6;
         });
 
         this.currentY += 5;
+        
+        // Agregar leyenda de colores
+        this.addColorLegend();
+    },
+
+    addColorLegend: function() {
+        this.checkPageBreak(20);
+        
+        this.currentDoc.setFontSize(8);
+        this.currentDoc.setFont('helvetica', 'bold');
+        this.currentDoc.setTextColor(...this.styles.darkColor);
+        this.currentDoc.text('LEYENDA:', this.config.margin, this.currentY);
+        
+        this.currentY += 5;
+        
+        // Rojo para faltantes
+        this.currentDoc.setFillColor(255, 200, 200);
+        this.currentDoc.rect(this.config.margin, this.currentY - 1, 5, 5, 'F');
+        this.currentDoc.setTextColor(0, 0, 0);
+        this.currentDoc.setFont('helvetica', 'normal');
+        this.currentDoc.text('Faltantes (cantidad física menor que teórica)', this.config.margin + 8, this.currentY + 2);
+        
+        this.currentY += 6;
+        
+        // Amarillo para excedentes
+        this.currentDoc.setFillColor(255, 255, 200);
+        this.currentDoc.rect(this.config.margin, this.currentY - 1, 5, 5, 'F');
+        this.currentDoc.text('Excedentes (cantidad física mayor que teórica)', this.config.margin + 8, this.currentY + 2);
     },
 
     generateFooter: function() {
@@ -633,7 +647,6 @@ const PDFGenerator = {
             inventarioFisico: Object.keys(AppState.physicalInventory).length,
             informacion: InventoryInfo.getCurrentInfo()
         });
-        console.log('Discrepancias:', this.getDiscrepanciesData().length);
         console.log('======================');
     }
 };

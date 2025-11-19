@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notas de Entrega - Gonzacars</title>
+    <link rel="stylesheet" href="https://ojedapedro.github.io/templategonzacar/main.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-section">
+                <img src="https://i.ibb.co/MDhy5tzK/image-2.png" alt="Logo Gonzacars" class="logo">
+                <div class="company-info">
+                    <h1>Gonzacars</h1>
+                    <p>Nota de Entrega</p>
+                </div>
+            </div>
+            <div class="document-info">
+                <p><strong>Fecha:</strong> <span id="fecha"></span></p>
+                <p><strong>N° de Documento:</strong> <span id="numero-documento"></span></p>
+            </div>
+        </header>
+
+        <section class="client-info">
+            <h2>Datos del Cliente</h2>
+            <div class="client-details">
+                <p><strong>Nombre:</strong> <span id="nombre-cliente"></span></p>
+                <p><strong>Dirección:</strong> <span id="direccion-cliente"></span></p>
+                <p><strong>Teléfono:</strong> <span id="telefono-cliente"></span></p>
+            </div>
+        </section>
+
+        <section class="products-section">
+            <h2>Productos Entregados</h2>
+            <table class="products-table">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th>Precio</th>
+                        <th>Cantidad</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="productos-tbody">
+                    <!-- Los productos se insertarán aquí dinámicamente -->
+                </tbody>
+            </table>
+        </section>
+
+        <section class="totals-section">
+            <div class="totals-container">
+                <p><strong>Subtotal:</strong> $<span id="subtotal">0.00</span></p>
+                <p><strong>IVA:</strong> $<span id="iva">0.00</span></p>
+                <p><strong>Total General:</strong> $<span id="total-general">0.00</span></p>
+            </div>
+        </section>
+
+        <footer>
+            <div class="signatures">
+                <div class="signature-field">
+                    <p>_________________________</p>
+                    <p>Firma del Cliente</p>
+                </div>
+                <div class="signature-field">
+                    <p>_________________________</p>
+                    <p>Firma del Empleado</p>
+                </div>
+            </div>
+            <div class="footer-text">
+                <p>¡Gracias por su compra!</p>
+                <p>Para consultas, contacte a: contacto@gonzacars.com</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

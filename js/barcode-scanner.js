@@ -184,9 +184,10 @@ const BarcodeScanner = {
             return;
         }
         
+        // MOSTRAR HASTA 1000 REGISTROS - MODIFICACIÓN SOLICITADA
         const recentBarcodes = Object.keys(AppState.physicalInventory)
             .sort((a, b) => AppState.physicalInventory[b] - AppState.physicalInventory[a])
-            .slice(0, 10);
+            .slice(0, 1000);
         
         recentBarcodes.forEach(barcode => {
             const product = AppState.theoreticalInventory.find(p => p.code === barcode);
@@ -233,6 +234,17 @@ const BarcodeScanner = {
             
             this.recentScansTable.appendChild(row);
         });
+
+        // Agregar mensaje si hay muchos registros
+        if (Object.keys(AppState.physicalInventory).length > 1000) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="6" class="text-center text-muted">
+                    <small>Mostrando 1000 de ${Object.keys(AppState.physicalInventory).length} productos escaneados</small>
+                </td>
+            `;
+            this.recentScansTable.appendChild(row);
+        }
     },
     
     startEditScan: function(barcode) {
@@ -259,7 +271,7 @@ const BarcodeScanner = {
                            class="form-control edit-quantity" 
                            value="${currentQty}" 
                            min="0" 
-                           max="999"
+                           max="9999"
                            style="width: 80px;">
                 </div>
             </td>
